@@ -1,0 +1,193 @@
+---
+title: "500 Final Project"
+author: "Hiren Jethra, Andres Sanches, Peter, Abhishek"
+date: "2023-02-04"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+#install.packages("caTools")
+
+library("ggplot2")
+library("caTools")
+library("corrplot")
+library("dplyr")
+
+url <- "https://ftp.cs.wisc.edu/math-prog/cpo-dataset/machine-learn/cancer/WDBC/WDBC.dat"
+data <- read.csv(url)
+head(data)
+```
+
+# Clean the Data
+```{r}
+
+data <- read.csv(file = url, header = FALSE,
+                col.names = c("id","diagnosis", "radius_mean", "texture_mean", "perimeter_mean", "area_mean", "smoothness_mean", "compactness_mean", "concavity_mean","concave.points_mean", "symmetry_mean", "fractal_dimension_mean", "radius_se", "texture_se", "perimeter_se", "area_se", "smoothness_se", "compactness_se", "concavity_se", "concave.points_se", "symmetry_se", "fractal_dimension_se", "radius_worst","texture_worst","perimeter_worst", "area_worst","smoothness_worst","compactness_worst","concavity_worst","concave.points_worst","symmetry_worst","fractal_dimension_worst") )
+
+#structure of the dataset
+str(data)
+
+#dimension of data set
+dim(data)
+
+#summary of data set
+summary(data)
+
+#Data checked, no inconsistent values. No values removed. 
+
+```
+
+#Count of patients by diagnosis stage
+
+```{r}
+data %>% count(diagnosis)
+```
+
+#Percentage of patients by diagnosis stage
+```{r}
+data %>% count(diagnosis)%>%group_by(diagnosis) %>%
+  summarize(perc_dx = round((n / 569)* 100, 2))
+```
+
+#DATA VISUALIZATION
+#Percentage of patients by diagnosis stage
+```{r}
+diagnosis.table <- table(data$diagnosis)
+colors <- rainbow(2,alpha=0.4) 
+
+# Pie chart 
+diagnosis.prop.table <- prop.table(diagnosis.table)*100
+diagnosis.prop.df <- as.data.frame(diagnosis.prop.table)
+pielabels <- sprintf("%s - %3.1f%s", diagnosis.prop.df[,1], diagnosis.prop.table, "%")
+pie(diagnosis.prop.table,
+  labels=pielabels,  
+  clockwise=TRUE,
+  col=colors,
+  border="gainsboro",
+  radius=0.8,
+  cex=0.8, 
+  main="Frequency of Cancer Diagnosis")
+legend(1, .4, legend=diagnosis.prop.df[,1], cex = 0.7, fill = colors)
+```
+#Correlation Plot
+
+#We are interested in knowing how the independent variables relate to each other. We do that by looking at correlations between them.
+
+```{r}
+# calculate collinearity
+c <- cor(data[,3:12])
+corrplot(c, order = "hclust", tl.cex = 0.7)
+```
+#Analyzing box plots for radius,area and concavity by diagnosis stage
+
+```{r}
+ggplot(data=data,aes(x=diagnosis,y=radius_mean))+geom_boxplot(color="red", fill="orange", alpha=0.2)+ggtitle("Radius of Benign Vs Malignant")
+```
+```{r}
+ggplot(data=data,aes(x=diagnosis,y=area_mean))+geom_boxplot(color="green", fill="yellow", alpha=0.2)+ggtitle("Area of Benign Vs Malignant")
+```
+```{r}
+ggplot(data=data,aes(x=diagnosis,y=concavity_mean))+geom_boxplot(color="blue", fill="purple", alpha=0.2)+ggtitle("Concavity of  Benign Vs Malignant")
+```
+#As shown by analysis, Malignant cells have higher radius,area and concavity mean than Benign cells. 
+
+#Density plot based on texture mean
+
+```{r}
+ggplot(data,aes(x=texture_mean,fill=as.factor(diagnosis)))+geom_density(alpha=0.2)+ggtitle("Texture mean  for Benign vs Malignant")
+
+```
+Texture mean is higher for Malignant cells. 
+
+#Analysing perimeter mean by Diagnosis stage
+
+```{r}
+ggplot(data, aes(x = perimeter_mean)) +
+  geom_histogram(binwidth=10, color="darkblue",fill="Pink", alpha=0.5, ) +
+  facet_wrap(~ diagnosis)+
+  ggtitle("Perimeter mean  for benign vs malignant")
+```
+Analyzing concavity mean for benign and malignant cells
+
+```{r}
+#data1=data%>%filter(concavity_mean>0)
+ggplot(data,aes(x=concavity_mean,y=diagnosis))+
+  geom_point(color="purple",fill="yellow", alpha=0.5)+
+  ggtitle("Concavity mean  for benign vs malignant")
+```
+# We would like to predict the diagnosis stage using a logistic regression model. Since our outcome/dependent variable is binary/categorical, using logistic regression with binomial family of distribution makes most sense.
+
+```{r}
+# First we correct the data type of our dependent variable to be factor
+data$diagnosis<-factor(data$diagnosis,levels=c("B","M"),labels=c(0,1))
+
+#Setting seed so that the analysis can be repeated and have same results
+set.seed(100)
+
+#Splitting the data into train and test using 75/25 ratio
+
+split=sample.split(data$diagnosis,SplitRatio=0.75)
+
+#Filtering the data to only the mean variables and then splitting into train & test
+training_set<-subset(data[,2:12],split==T)
+head(training_set)
+test_set<-subset(data[,2:12],split==F)
+head(test_set)
+```
+
+```{r}
+# We are normalizing the variables so that they can become comparable and used in same model
+
+training_set[,2:11]<-scale(training_set[,2:11])
+head(training_set)
+test_set[,2:11]<-scale(test_set[,2:11])
+head(test_set)
+```
+
+
+```{r}
+# Logistic regression model
+log_reg = glm(diagnosis ~ ., data=training_set, family=binomial)
+summary(log_reg)
+
+# We can see that texture mean, concavity mean, concave.points_mean and symmetry mean are significant.gj 
+
+#Hypothesis test:
+#H0: Texture mean is not significant in predicting diagnosis stage
+#Ha: Texture mean is significant in predicting diagnosis stage
+
+# As we see texture mean has p-value<0.05, we can reject null hypothesis and say that we have evidence that texture mean is significant in predicting diagnosis stage.
+```
+
+```{r}
+# Model predicts the probability of diagnosis stage = malignant, on the test data set
+predict_proba<-predict(object=log_reg,type="response",newdata=test_set[-1])
+head(predict_proba)
+```
+
+```{r}
+# Recreating predicted diagnosis variable by logic: if probability>0.5 then 1 else 0
+y_pred<-ifelse(predict_proba>0.5,1,0)
+head(y_pred)
+```
+
+```{r}
+# Evaluating the model by looking at the confusion matrix - Comparison between actual vs predicted diagnosis stage in the test dataset
+confusion_matrix<-table(test_set[,1],y_pred)
+confusion_matrix
+```
+
+```{r}
+# Calculating accuracy by: (True Positives + True Negatives/Total Observations)
+accuracy<-sum(diag(confusion_matrix))/sum(confusion_matrix) 
+accuracy
+```
+
